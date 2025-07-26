@@ -23,6 +23,7 @@ from pathlib import Path
 import re
 import asyncio
 import tomllib
+import ast
 
 _CRITICAL_CONSTRAINTS = [
     Constraint(
@@ -35,6 +36,14 @@ _CRITICAL_CONSTRAINTS = [
     DisallowedFunctionConstraint("eval"),
     DisallowedFunctionConstraint("open"),
 ]
+
+
+class FailAST(NamedTuple):
+    """
+    The program cannot be parsed into a Python AST.
+    """
+
+    error: SyntaxError
 
 
 class FailConstraints(NamedTuple):
@@ -89,7 +98,7 @@ class Exercise(BaseModel):
 
     def run(
         self, python_file: Path
-    ) -> FailConstraints | FailProgramError | FailOutput | None:
+    ) -> FailAST | FailConstraints | FailProgramError | FailOutput | None:
         """
         Runs the exercise on the given Python file, and returns if it passed, or if and where it fails.
 
@@ -105,14 +114,20 @@ class Exercise(BaseModel):
         with open(python_file, "r") as f:
             code = f.read()
 
+        # CHECK: The code must be valid Python (as in, can be parsed as AST)
+        try:
+            python_ast = ast.dump(ast.parse(code))
+        except SyntaxError as se:
+            return FailAST(se)
+
         # CHECK: The code must follow critical constraints, such as no imports and no uses of
         #        eval/exec.
-        failed_criticals = check_constraints(code, _CRITICAL_CONSTRAINTS)
+        failed_criticals = check_constraints(python_ast, _CRITICAL_CONSTRAINTS)
         if len(failed_criticals) != 0:
             return FailConstraints(True, [c.description for c in failed_criticals])
 
         # CHECK: The code must follow all of the exercises's specified constraints.
-        failed = check_constraints(code, self.constraints)
+        failed = check_constraints(python_ast, self.constraints)
         if len(failed) != 0:
             return FailConstraints(False, [c.description for c in failed])
 

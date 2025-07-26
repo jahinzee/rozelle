@@ -14,6 +14,7 @@ from rozelle.exercise import (
     FailConstraints,
     FailProgramError,
     FailOutput,
+    FailAST,
 )
 
 from pathlib import Path
@@ -39,13 +40,13 @@ def _full_clear_screen():
 
 
 def _get_result_text(
-    result: FailConstraints | FailProgramError | FailOutput | None,
+    result: FailAST | FailConstraints | FailProgramError | FailOutput | None,
 ) -> tuple[Text, Text, Group | None]:
     """
     Get the information necessary to display an Exercise' result output.
 
     Args:
-        result (FailConstraints | FailProgramError | FailOutput | None):
+        result (FailAST | FailConstraints | FailProgramError | FailOutput | None):
             The result from `(Exercise).run()`.
 
     Returns:
@@ -58,6 +59,13 @@ def _get_result_text(
     """
     BADGE_PASS = Text("PASS:", style="bold green")
     BADGE_FAIL = Text("FAIL:", style="bold red")
+
+    if type(result) is FailAST:
+        return (
+            BADGE_FAIL,
+            Text("Your program cannot be examined due to a syntax error."),
+            Group(Text(str(result.error))),
+        )
 
     if type(result) is FailConstraints:
         critical = "critical" if result.critical else "these"
@@ -84,12 +92,13 @@ def _get_result_text(
             Group(Syntax(got, "text", line_numbers=True, background_color="default")),
         )
 
+    assert result is None
     return (BADGE_PASS, Text("Your program is correct!"), None)
 
 
 def _display_result(
     console: Console,
-    result: FailConstraints | FailProgramError | FailOutput | None,
+    result: FailAST | FailConstraints | FailProgramError | FailOutput | None,
 ):
     """
     Display Exercise result information to the rich console.

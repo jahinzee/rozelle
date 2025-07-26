@@ -108,11 +108,12 @@ rozelle run --attempt-file <attempt-file.py> -e <exercise-file.toml>
 
 When an exercise is loaded, Rozelle will:
 
-1. check if the attempt code satisfies core security constraints,
+1. check if the attempt code is valid Python syntax,
+2. check if the attempt code satisfies core security constraints,
   (see [exercise.py](/src/rozelle/exercise.py)'s `_CRITICAL_CONSTRAINTS`),
-1. check if the attempt code satisfies the exercise's constraints,
-2. execute the attempt code in a sandbox (and check if it runs successfully), and
-3. compare the attempt's output to the expected output.
+3. check if the attempt code satisfies the exercise's constraints,
+4. execute the attempt code in a sandbox (and check if it runs successfully), and
+5. compare the attempt's output to the expected output.
 
 If any of these checks fail, Rozelle will output a message with details.
 

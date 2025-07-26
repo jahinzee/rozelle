@@ -28,7 +28,10 @@ class Constraint(BaseModel):
         this constraint.
 
         Args:
-            python_ast (ast.AST): the AST of the code to check
+            python_ast (ast.AST): the AST of the code to check.
+
+        Throws:
+            SyntaxError: the Python source has invalid syntax.
 
         Returns:
             bool: True if the code passes the constraint.
@@ -57,14 +60,13 @@ def DisallowedFunctionConstraint(name: str) -> Constraint:
 
 
 def check_constraints(
-    python_code: str, constrainsts: list[Constraint]
+    python_ast: str, constrainsts: list[Constraint]
 ) -> list[Constraint]:
     """
-    Check if Python code file follows the specified list of constraints by parsing
-    the AST.
+    Check if a given Python AST follows the specified list of constraints.
 
     Args:
-        python_file (str): the Python file to examine.
+        python_ast (str): the Python AST to examine.
         constrainsts (list[Constraint]): the list of constraints to check against.
 
     Returns:
@@ -72,5 +74,4 @@ def check_constraints(
                           empty list if the code satisfies all constrainsts.
     """
 
-    code_ast = ast.dump(ast.parse(python_code))
-    return [c for c in constrainsts if not c.check(code_ast)]
+    return [c for c in constrainsts if not c.check(python_ast)]
