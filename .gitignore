@@ -1,0 +1,19 @@
+# Python-generated files
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+
+# Virtual environments
+.venv
+
+# Mypy cache
+.mypy_cache
+
+# node_modules (for PyodideSandbox/Deno)
+node_modules
+
+# Default scaffolded projects
+rozelle-scaffold
