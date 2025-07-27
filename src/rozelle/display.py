@@ -15,6 +15,7 @@ from rozelle.exercise import (
     FailProgramError,
     FailOutput,
     FailAST,
+    Result,
 )
 
 from pathlib import Path
@@ -39,9 +40,7 @@ def _full_clear_screen():
         os.system("clear")
 
 
-def _get_result_text(
-    result: FailAST | FailConstraints | FailProgramError | FailOutput | None,
-) -> tuple[Text, Text, Group | None]:
+def _get_result_text(result: Result) -> tuple[Text, Text, Group | None]:
     """
     Get the information necessary to display an Exercise' result output.
 
@@ -96,10 +95,7 @@ def _get_result_text(
     return (BADGE_PASS, Text("Your program is correct!"), None)
 
 
-def _display_result(
-    console: Console,
-    result: FailAST | FailConstraints | FailProgramError | FailOutput | None,
-):
+def _display_result(console: Console, result: Result):
     """
     Display Exercise result information to the rich console.
 

@@ -12,8 +12,19 @@ __package__ = "rozelle"
 from rozelle.exercise import Exercise
 from rozelle.display import display_run
 
+from typing import Callable
 from pathlib import Path
-from watchdog.events import FileSystemEventHandler, FileModifiedEvent, DirModifiedEvent
+from watchdog.events import (
+    FileSystemEventHandler,
+    FileModifiedEvent,
+    DirModifiedEvent,
+    FileDeletedEvent,
+    DirDeletedEvent,
+    DirMovedEvent,
+    FileMovedEvent,
+)
+
+
 from watchdog.observers import Observer
 from rich.console import Console
 
@@ -22,41 +33,30 @@ import time
 _WATCH_DELAY_SECS = 0.1
 
 
-class ExerciseReloadEventHandler(FileSystemEventHandler):
-    def __init__(
-        self,
-        exercise: Exercise,
-        exercise_path: Path,
-        python_file: Path,
-        console: Console,
-        full_clear: bool = False,
-    ):
-        self.exercise = exercise
-        self.exercise_path = exercise_path
-        self.python_file = python_file
-        self.console = console
-        self.full_clear = full_clear
+class _FileChangeCallbackHandler(FileSystemEventHandler):
+    def __init__(self, callback: Callable, path: Path):
+        self._callback = callback
+        self._path = str(path)
         self._callback()
 
-    def _callback(self):
-        display_run(
-            self.exercise,
-            str(self.exercise_path),
-            self.python_file,
-            self.console,
-            full_clear=self.full_clear,
-        )
+    def _file_missing(self, deleted: bool):
+        print(f"Fatal error: file {'deleted' if deleted else 'moved'}.")
+        exit(1)
 
     def on_modified(self, event: DirModifiedEvent | FileModifiedEvent):
-        self._callback()
+        # See `watch_display_run`'s comments for more info.
+        if type(event) is FileModifiedEvent and event.src_path == str(self._path):
+            self._callback()
 
-    def on_moved(self, _e):
-        print("File moved, aborting program...")
-        exit(1)
+    def on_moved(self, event: DirMovedEvent | FileMovedEvent):
+        # See `watch_display_run`'s comments for more info.
+        if type(event) is FileModifiedEvent and event.src_path == str(self._path):
+            self._file_missing(False)
 
-    def on_deleted(self, _e):
-        print("File deleted, aborting program...")
-        exit(1)
+    def on_deleted(self, event: FileDeletedEvent | DirDeletedEvent):
+        # See `watch_display_run`'s comments for more info.
+        if type(event) is FileModifiedEvent and event.src_path == str(self._path):
+            self._file_missing(True)
 
 
 def watch_display_run(
@@ -73,12 +73,23 @@ def watch_display_run(
         full_clear (bool, optional): if True, clears the scrollback. Defaults to False.
     """
     console = Console()
-    event = ExerciseReloadEventHandler(
-        exercise, exercise_file, python_file, console, full_clear
+    callback = lambda: display_run(  # noqa: E731
+        exercise, str(exercise_file), python_file, console, full_clear=full_clear
     )
 
+    # We want to only run the callback on `python_file`'s events. watchdog can only monitor
+    # directories, so we'll watch the file's parent, and add additional checks inside the monitor
+    # class to only run the callback on file events.
+    #
+    # Passing in the file path directly to watchdog works fine on *NIX, but breaks on Windows.
+    # (see <https://github.com/gorakhargosh/watchdog/issues/58>)
+    #
+    event = _FileChangeCallbackHandler(callback, python_file)
+
     observer = Observer()
-    observer.schedule(event, str(python_file), recursive=False)
+
+    # Using the parent
+    observer.schedule(event, str(python_file.parent), recursive=False)
     observer.start()
 
     try:
@@ -86,5 +97,4 @@ def watch_display_run(
             time.sleep(_WATCH_DELAY_SECS)
     except KeyboardInterrupt:
         observer.stop()
-        console.clear()
     observer.join()

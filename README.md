@@ -98,7 +98,7 @@ min_required = 1
 
 ```py
 for name in ["Alice", "Bob", "Carol", "Dave"]:
-    print(f"Hello, {name}"!)
+    print(f"Hello, {name}!")
 ```
 
 </details>

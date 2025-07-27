@@ -13,6 +13,7 @@ from langchain_sandbox import PyodideSandbox
 
 import json
 import secrets
+import asyncio
 
 
 def _mangle_name(name: str) -> str:
@@ -32,7 +33,7 @@ def _mangle_name(name: str) -> str:
     return f"_{secrets.token_hex(8)}__{name}"
 
 
-async def run_python(code: str) -> tuple[str, bool]:
+def run_python(code: str) -> tuple[str, bool]:
     """
     Run the Python file in a Pyodide sandbox, and return the stdout or stderr, depending on
     execution status, and a boolean indicating success.
@@ -85,7 +86,7 @@ async def run_python(code: str) -> tuple[str, bool]:
     )
 
     sandbox = PyodideSandbox(allow_net=False)
-    result = await sandbox.execute(PRELUDE + code + EPILOGUE)
+    result = asyncio.run(sandbox.execute(PRELUDE + code + EPILOGUE))
 
     if result.status != "success":
         # Program execution failed for some reason, could be a syntax error or runtime error.

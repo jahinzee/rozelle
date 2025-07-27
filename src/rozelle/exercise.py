@@ -21,7 +21,6 @@ from pydantic import BaseModel, Field
 from pathlib import Path
 
 import re
-import asyncio
 import tomllib
 import ast
 
@@ -72,6 +71,10 @@ class FailOutput(NamedTuple):
     got: str
 
 
+type Fail = FailAST | FailConstraints | FailProgramError | FailOutput
+type Result = Fail | None
+
+
 class Exercise(BaseModel):
     message: str
     expected_output: str
@@ -98,14 +101,12 @@ class Exercise(BaseModel):
         with open(toml_file, "rb") as f:
             return cls.model_validate(tomllib.load(f))
 
-    def run(
-        self, python_file: Path
-    ) -> FailAST | FailConstraints | FailProgramError | FailOutput | None:
+    def run(self, python_file: Path) -> Result:
         """
         Runs the exercise on the given Python file, and returns if it passed, or if and where it fails.
 
         Args:
-            python_file (TextIOWrapper): An opened file to Python source code - will be fully read.
+            python_file (Path): the Python source code file.
 
         Returns:
             None:              if the program passes the exercise,
@@ -134,7 +135,7 @@ class Exercise(BaseModel):
             return FailConstraints(False, [c.description for c in failed])
 
         # CHECK: The program must execute successfully.
-        output, success = asyncio.run(run_python(code))
+        output, success = run_python(code)
         if not success:
             return FailProgramError(program_stderr=output)
 
