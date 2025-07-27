@@ -54,6 +54,13 @@ A constraint has:
   - Consider using `'''TOML raw strings'''` to minimise escape sequence clashes.
 
 
+### Additional flags
+
+- `hide_expected_output`: if `true`, hides the expected output from the user (default: `false`)
+- `hide_constraints`: if `true`, hides the constraints from the user (default: `false`)
+
+### Example
+
 An example exercise can be generated with [`rozelle scaffold`](#scaffold), and is also available
 in the summary below:
 

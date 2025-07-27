@@ -18,7 +18,7 @@ from rozelle.exercise import (
 )
 
 from pathlib import Path
-from rich.console import Console, Group
+from rich.console import Console, Group, ConsoleRenderable
 from rich.syntax import Syntax
 from rich.text import Text
 from rich.columns import Columns
@@ -125,29 +125,43 @@ def _display_result(
 
 def _display_exercise(console: Console, exercise: Exercise):
     """
-    Display Exercise information to the rich console
+    Display Exercise information to the rich console.
 
     Args:
         console (Console): the rich Console object.
         exercise (Exercise): the exercise to display information about.
     """
+    expected_output: list[ConsoleRenderable] = (
+        []
+        if exercise.hide_expected_output
+        else [
+            _BlankLine,
+            Text("Expected output:", style="blue"),
+            _BlankLine,
+            Syntax(
+                exercise.expected_output.strip(),
+                "text",
+                line_numbers=True,
+                background_color="default",
+            ),
+        ]
+    )
+    constraints: list[ConsoleRenderable] = (
+        []
+        if exercise.hide_constraints
+        else [
+            _BlankLine,
+            Text("Constraints:", style="blue"),
+            _BlankLine,
+            *[Text(f"  · {c.description}") for c in exercise.constraints],
+        ]
+    )
     console.print(
         Padding(
             Group(
                 Text(exercise.message.strip()),
-                _BlankLine,
-                Text("Expected output:", style="blue"),
-                _BlankLine,
-                Syntax(
-                    exercise.expected_output.strip(),
-                    "text",
-                    line_numbers=True,
-                    background_color="default",
-                ),
-                _BlankLine,
-                Text("Constraints:", style="blue"),
-                _BlankLine,
-                *[Text(f"  · {c.description}") for c in exercise.constraints],
+                *expected_output,
+                *constraints,
             ),
             (1, 3),
         )

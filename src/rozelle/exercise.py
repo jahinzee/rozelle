@@ -76,6 +76,8 @@ class Exercise(BaseModel):
     message: str
     expected_output: str
     constraints: list[Constraint] = Field([])
+    hide_constraints: bool = Field(default=False)
+    hide_expected_output: bool = Field(default=False)
 
     @classmethod
     def from_toml(cls, toml_file: Path) -> Self:
