@@ -1,0 +1,10 @@
+### BEGIN SYSTEM INTERLUDE ###
+
+# ruff: noqa: F821
+
+__import__("sys").stdout = _RZ_MANGLE__real_stdout
+rozelle = __import__("types").SimpleNamespace()
+rozelle.stdout = _RZ_MANGLE__fake_stdout.getvalue().splitlines()
+rozelle.tokens = set[str]()
+
+### END SYSTEM INTERLUDE ###

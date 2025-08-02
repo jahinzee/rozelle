@@ -76,11 +76,10 @@ def _get_result_text(result: Result) -> tuple[Text, Text, Group | None]:
         )
 
     if type(result) is FailProgramError:
-        last_error_line = result.program_stderr.splitlines()[-1]
         return (
             BADGE_FAIL,
             Text("Your program ran into an error."),
-            Group(Text(last_error_line, style="grey")),
+            Group(Text(result.program_stderr, style="grey")),
         )
 
     if type(result) is FailOutput:

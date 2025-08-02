@@ -1,0 +1,12 @@
+### BEGIN SYSTEM EPILOGUE ###
+
+# ruff: noqa: F821
+
+print("--- BEGIN JSON RESPONSE ---")
+print(__import__("json").dumps({
+    "stdout": rozelle.stdout,
+    "tokens": list(rozelle.tokens)
+}))
+print("--- END JSON RESPONSE ---")
+
+### END SYSTEM EPILOGUE ###

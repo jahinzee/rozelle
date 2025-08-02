@@ -14,7 +14,7 @@ from rozelle.constraints import (
     DisallowedFunctionConstraint,
     check_constraints,
 )
-from rozelle.sandbox import run_python
+from rozelle.sandbox import run_attempt_code
 
 from typing import NamedTuple, Self
 from pydantic import BaseModel, Field
@@ -135,13 +135,12 @@ class Exercise(BaseModel):
             return FailConstraints(False, [c.description for c in failed])
 
         # CHECK: The program must execute successfully.
-        output, success = run_python(code)
-        if not success:
-            return FailProgramError(program_stderr=output)
+        result = run_attempt_code(code)
+        if not result.success:
+            return FailProgramError(program_stderr=result.output)
 
         # CHECK: The program's output must match the exercises's expected output.
-        expected = self.expected_output.strip()
-        got = output.strip()
+        expected, got = self.expected_output.strip(), result.output.strip()
         if expected != got:
             return FailOutput(expected, got)
 
