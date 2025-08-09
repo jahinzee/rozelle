@@ -1,0 +1,27 @@
+# rozelle-scaffold: example exercise.
+#
+# Any copyright is dedicated to the Public Domain.
+# https://creativecommons.org/publicdomain/zero/1.0/
+#
+
+message = """
+Can you write some Python code to say hello to Alice, Bob, Carol, \
+and David with a for loop and only one print statement?
+"""
+
+expected_output = """
+Hello, Alice!
+Hello, Bob!
+Hello, Carol!
+Hello, Dave!
+"""
+
+[[constraints]]
+description = "You can only use the `print` function once."
+ast_regex = '''func=Name\(id='print', ctx=Load\(\)\)'''
+max_allowed = 1
+
+[[constraints]]
+description = "You must use atleast one `for` loop."
+ast_regex = '''For\(target='''
+min_required = 1

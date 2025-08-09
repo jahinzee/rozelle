@@ -1,0 +1,8 @@
+_RZ_MANGLE__timer_end = _RZ_MANGLE__module_time.perf_counter()
+_RZ_MANGLE__attempt_execution_time = _RZ_MANGLE__timer_end - _RZ_MANGLE__timer_start
+_RZ_MANGLE__attempt_execution_time = round(_RZ_MANGLE__attempt_execution_time, 2)
+
+__import__("sys").stdout = _RZ_MANGLE__real_stdout
+rozelle = __import__("types").SimpleNamespace()
+rozelle.stdout = _RZ_MANGLE__fake_stdout.getvalue().splitlines()
+rozelle.tokens = set[str]()

@@ -1,0 +1,3 @@
+_RZ_MANGLE__fake_stdout = __import__("io").StringIO()
+_RZ_MANGLE__real_stdout = __import__("sys").stdout
+__import__("sys").stdout = _RZ_MANGLE__fake_stdout

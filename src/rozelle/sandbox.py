@@ -10,64 +10,116 @@
 __package__ = "rozelle"
 
 from langchain_sandbox import PyodideSandbox
-from importlib import resources as import_res
+from langchain_sandbox.pyodide import CodeExecutionResult
 from functools import cache
 from typing import Optional, NamedTuple
+from io import StringIO
+from pydantic import BaseModel, ValidationError
 
 import ast
 import json
 import secrets
 import asyncio
 
-from . import sandbox_snippets
+from importlib.resources import read_text
+from . import sandbox_snippets as snippets
 
-_SNIPPETS = import_res.files(sandbox_snippets)
-_SNIPPETS_PREAMBLE = import_res.read_text(sandbox_snippets, "preamble.py.snippet")
-_SNIPPETS_INTERLUDE = import_res.read_text(sandbox_snippets, "interlude.py.snippet")
-_SNIPPETS_EPILOGUE = import_res.read_text(sandbox_snippets, "epilogue.py.snippet")
+# region private
 
-_MANGLE_PREFIX = "_RZ_MANGLE__"
+_SNIPPET_01 = read_text(snippets, "01_before_exercise_prerun.py.snippet")
+_SNIPPET_03 = read_text(snippets, "03_after_exercise_prerun.py.snippet")
+_SNIPPET_05 = read_text(snippets, "05_before_exercise_postrun.py.snippet")
+_SNIPPET_07 = read_text(snippets, "07_after_exercise_postrun.py.snippet")
+
+_SALT_SYSTEM = 0
+_SALT_EXERCISE = 1
+_SALT_ATTEMPT: None = None
+
+_TIMEOUT_SECONDS = 20
 
 
 @cache
-def _mangle_identifier_if_possible(name: str, hash: int = 0) -> str:
+def _mangle_identifier_if_possible(name: str, salt: int) -> str:
+    MANGLE_PREFIX = "_RZ_MANGLE__"
     return (
         name.replace(
-            _MANGLE_PREFIX, f"_rozelle_mangled_{hash}_{secrets.token_hex(8)}__", count=1
+            MANGLE_PREFIX, f"_rozelle_mangled_{salt}_{secrets.token_hex(8)}__", count=1
         )
-        if name.startswith(_MANGLE_PREFIX)
+        if name.startswith(MANGLE_PREFIX)
         else name
     )
 
 
+class _ExecutionStreamResults(BaseModel):
+    stdout: list[str]
+    tokens: set[str]
+    attempt_time_seconds: float
+
+
+class _SnippetAssemblyContext(NamedTuple):
+    name: str
+    text: str
+    mangle_salt: int | None
+
+
 class _NameMangler(ast.NodeTransformer):
-    def __init__(self, hash):
-        self.hash = hash
+    def __init__(self, salt):
+        self.salt = salt
 
     def visit_Name(self, node: ast.Name):
         return ast.Name(
-            id=_mangle_identifier_if_possible(node.id, self.hash), ctx=node.ctx
+            id=_mangle_identifier_if_possible(node.id, self.salt), ctx=node.ctx
         )
 
 
-def _prepare_python_source(code: str, mangle: Optional[int] = None) -> str:
+def _prepare_python_source(code: str, mangle_salt: Optional[int] = None) -> str:
     code_ast = ast.parse(code)
-    if mangle is not None:
-        code_ast = _NameMangler(mangle).visit(code_ast)
+    if mangle_salt is not None:
+        code_ast = _NameMangler(mangle_salt).visit(code_ast)
     return ast.unparse(code_ast)
+
+
+def _process_error_output(error: str | None) -> str:
+    DEFAULT = "Could not get error information from Pyodide."
+    if error is None:
+        return DEFAULT
+    lines = error.splitlines()
+    if len(lines) == 0:
+        return DEFAULT
+    return lines[-1]
 
 
 def _substring_between_two_substrings(input: str, left: str, right: str) -> str:
     return input.split(left, 1)[1].split(right, 1)[0]
 
 
+async def _sandbox_execute_with_timeout(
+    sandbox: PyodideSandbox, code: str
+) -> Optional[CodeExecutionResult]:
+    task = asyncio.create_task(sandbox.execute(code))
+
+    complete, incomplete = await asyncio.wait([task], timeout=_TIMEOUT_SECONDS)
+
+    if len(incomplete) != 0:
+        task.cancel()
+        return None
+
+    result = await next(iter(complete))
+    return result
+
+
+# endregion
+# region public
+
+
 class ExecutionResult(NamedTuple):
     success: bool
     output: str
     tokens: Optional[set[str]]
+    attempt_time_seconds: Optional[float]
 
 
-def run_attempt_code(
+def execute_attempt(
     attempt_code: str,
     exercise_prerun: Optional[str] = None,
     exercise_postrun: Optional[str] = None,
@@ -90,9 +142,6 @@ def run_attempt_code(
             tokens (Optional[set[str]]): Any exercise tokens collected from exercise_postrun code.
     """
 
-    # Prelude and epilogue snippets to be run before and after the code in `python_file`
-    # respectively.
-    #
     # PyodideSandbox by itself cannot stream out newlines properly so we're hijacking stdout to
     # point to a separate buffer, which we'll then stream out as a newline-separated JSON array
     # to be collected by the main code.
@@ -102,59 +151,125 @@ def run_attempt_code(
     #  * Using start and end signals to filter out any unexpected stdin noise (e.g. from
     #    Pyodide import warnings we can safely ignore)
     #
-    # See also:
-    #   src/rozelle/sandbox_snippets/preamble.py.snippet
-    #   src/rozelle/sandbox_snippets/interlude.py.snippet
-    #   src/rozelle/sandbox_snippets/epilogue.py.snippet
-    #
-    preamble = _prepare_python_source(_SNIPPETS_PREAMBLE, mangle=0)
-    interlude = _prepare_python_source(_SNIPPETS_INTERLUDE, mangle=0)
-    epilogue = _prepare_python_source(_SNIPPETS_EPILOGUE, mangle=0)
-    code = preamble + "\n" + attempt_code + "\n" + interlude + "\n" + epilogue
+    assembly = (
+        _SnippetAssemblyContext(
+            name="system, before exercise prerun",
+            text=_SNIPPET_01,
+            mangle_salt=_SALT_SYSTEM,
+        ),
+        _SnippetAssemblyContext(
+            name="exercise prerun",
+            text=exercise_prerun or "",
+            mangle_salt=_SALT_EXERCISE,
+        ),
+        _SnippetAssemblyContext(
+            name="system, after exercise prerun",
+            text=_SNIPPET_03,
+            mangle_salt=_SALT_SYSTEM,
+        ),
+        _SnippetAssemblyContext(
+            name="attempt", text=attempt_code, mangle_salt=_SALT_ATTEMPT
+        ),
+        _SnippetAssemblyContext(
+            name="system, before exercise postrun",
+            text=_SNIPPET_05,
+            mangle_salt=_SALT_SYSTEM,
+        ),
+        _SnippetAssemblyContext(
+            name="exercise postrun",
+            text=exercise_postrun or "",
+            mangle_salt=_SALT_EXERCISE,
+        ),
+        _SnippetAssemblyContext(
+            name="system, after exercise postrun",
+            text=_SNIPPET_07,
+            mangle_salt=_SALT_SYSTEM,
+        ),
+    )
+
+    code = StringIO()
+    for a in assembly:
+        if len(a.text) == 0:
+            continue
+        try:
+            prepared = _prepare_python_source(a.text, mangle_salt=a.mangle_salt)
+        except SyntaxError as se:
+            return ExecutionResult(
+                success=False,
+                output=(f"SyntaxError at <{a.name}> on line {se.lineno}:\n  {se.msg}"),
+                tokens=None,
+                attempt_time_seconds=None,
+            )
+        code.write(prepared + "\n\n")
 
     sandbox = PyodideSandbox(allow_net=False)
-    result = asyncio.run(sandbox.execute(code))
+    sandbox_result = asyncio.run(
+        _sandbox_execute_with_timeout(sandbox, code.getvalue())
+    )
 
-    if result.status != "success":
+    if sandbox_result is None:
+        return ExecutionResult(
+            success=False,
+            output="The attempt took too long to execute.",
+            tokens=None,
+            attempt_time_seconds=None,
+        )
+
+    if sandbox_result.status != "success":
         # Program execution failed for some reason, could be a syntax error or runtime error.
         #
         return ExecutionResult(
             success=False,
-            output=result.stderr or "Could not get error information from Pyodide.",
+            output=_process_error_output(sandbox_result.stderr),
             tokens=None,
+            attempt_time_seconds=None,
         )
 
     # Parse stdout from JSON back into a proper newline'd string, extracting from between the
     # previously defined start and end signals.
     #
-    if result.stdout is None:
+    if sandbox_result.stdout is None:
         # Pyodide gave us a None stdout for some reason.
         #
         return ExecutionResult(
             success=False,
             output="Standard output could not be accessed.",
             tokens=None,
+            attempt_time_seconds=None,
         )
 
     try:
-        output = json.loads(
-            _substring_between_two_substrings(
-                input=result.stdout,
-                left="--- BEGIN JSON RESPONSE ---",
-                right="--- END JSON RESPONSE ---",
+        result = _ExecutionStreamResults.parse_obj(
+            json.loads(
+                _substring_between_two_substrings(
+                    input=sandbox_result.stdout,
+                    left="--- BEGIN JSON RESPONSE ---",
+                    right="--- END JSON RESPONSE ---",
+                )
             )
         )
-        stdout, tokens = "\n".join(output["stdout"]), set(output["tokens"])
-    except (IndexError, KeyError, json.JSONDecodeError):
-        # One of these problems have occured:
-        #   * IndexError:       incorrect stdout extraction
-        #   * KeyError:         missing JSON field
-        #   * JSONDecodeError:  invalid JSON data
-        #
+        print(result)
+    except json.JSONDecodeError as jsonde:
         return ExecutionResult(
             success=False,
-            output="Standard output contains malformed or unexpected results.",
+            output=f"The sandbox failed to return a valid result ({jsonde.msg})",
             tokens=None,
+            attempt_time_seconds=0.0,
+        )
+    except ValidationError as ve:
+        return ExecutionResult(
+            success=False,
+            output=f"The sandbox failed to return a valid result ({ve.errors})",
+            tokens=None,
+            attempt_time_seconds=0.0,
         )
 
-    return ExecutionResult(success=True, output=stdout, tokens=tokens)
+    return ExecutionResult(
+        success=True,
+        output="\n".join(result.stdout),
+        tokens=result.tokens,
+        attempt_time_seconds=result.attempt_time_seconds,
+    )
+
+
+# endregion

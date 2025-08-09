@@ -24,11 +24,12 @@ from watchdog.events import (
     FileMovedEvent,
 )
 
-
 from watchdog.observers import Observer
 from rich.console import Console
 
 import time
+
+# region private
 
 _WATCH_DELAY_SECS = 0.1
 
@@ -57,6 +58,10 @@ class _FileChangeCallbackHandler(FileSystemEventHandler):
         # See `watch_display_run`'s comments for more info.
         if type(event) is FileModifiedEvent and event.src_path == str(self._path):
             self._file_missing(True)
+
+
+# endregion
+# region public
 
 
 def watch_display_run(
@@ -98,3 +103,6 @@ def watch_display_run(
     except KeyboardInterrupt:
         observer.stop()
     observer.join()
+
+
+# endregion

@@ -18,9 +18,17 @@ import sys
 import random
 import shutil
 
+from importlib.resources import read_text
+from . import scaffold_templates
+
+
+# region private
+
 SCAFFOLD_ROOT = Path("./rozelle-scaffold/")
 _SCAFFOLD_EXERCISES = Path("exercises/")
 _SCAFFOLD_ATTEMPT = Path("attempt.py")
+
+_SCAFFOLD_EXERCISE_TEXT = read_text(scaffold_templates, "example.toml")
 
 
 def _get_file_tree(root: Path) -> dict[Path, str]:
@@ -34,37 +42,7 @@ def _get_file_tree(root: Path) -> dict[Path, str]:
         dict[Path, str]: a mapping of file paths to their contents.
     """
     return {
-        Path(root / _SCAFFOLD_EXERCISES / "example.toml"): (
-            "# rozelle-scaffold: example exercise.\n"
-            "#\n"
-            "# Any copyright is dedicated to the Public Domain.\n"
-            "# https://creativecommons.org/publicdomain/zero/1.0/\n"
-            "#\n"
-            "\n"
-            'message = """\n'
-            "Can you write some Python code to say hello to Alice, Bob, Carol,\n"
-            "and David with a for loop and only one print statement?\n"
-            '"""\n'
-            "\n"
-            'expected_output = """\n'
-            "Hello, Alice!\n"
-            "Hello, Bob!\n"
-            "Hello, Carol!\n"
-            "Hello, Dave!\n"
-            '"""\n'
-            "\n"
-            "[[constraints]]\n"
-            'description = "You can only use the `print` function once."\n'
-            r"ast_regex = '''func=Name\(id='print', ctx=Load\(\)\)'''"
-            "\n"
-            "max_allowed = 1\n"
-            "\n"
-            "[[constraints]]\n"
-            'description = "You must use atleast one `for` loop."\n'
-            r"ast_regex = '''For'''"
-            "\n"
-            "min_required = 1\n"
-        ),
+        Path(root / _SCAFFOLD_EXERCISES / "example.toml"): _SCAFFOLD_EXERCISE_TEXT,
         Path(root / _SCAFFOLD_ATTEMPT): "",
     }
 
@@ -87,6 +65,10 @@ def _get_scaffold_exercises(scaffold_root: Path) -> list[Path]:
         print(f"No exercises found in '{exercise_path}.", file=sys.stderr)
         exit(0)
     return result
+
+
+# endregion
+# region public
 
 
 def init(scaffold_root: Path):
@@ -152,3 +134,6 @@ def run_fuzzy(scaffold_root: Path, full_clear: bool = False):
 
     attempt_file = Path(scaffold_root / _SCAFFOLD_ATTEMPT)
     run(selected_file[0], attempt_file, full_clear=full_clear)
+
+
+# endregion

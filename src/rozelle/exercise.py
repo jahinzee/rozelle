@@ -14,7 +14,7 @@ from rozelle.constraints import (
     DisallowedFunctionConstraint,
     check_constraints,
 )
-from rozelle.sandbox import run_attempt_code
+from rozelle.sandbox import execute_attempt
 
 from typing import NamedTuple, Self
 from pydantic import BaseModel, Field
@@ -23,6 +23,8 @@ from pathlib import Path
 import re
 import tomllib
 import ast
+
+# region private
 
 _CRITICAL_CONSTRAINTS = [
     Constraint(
@@ -35,6 +37,9 @@ _CRITICAL_CONSTRAINTS = [
     DisallowedFunctionConstraint("eval"),
     DisallowedFunctionConstraint("open"),
 ]
+
+# endregion
+# region public
 
 
 class FailAST(NamedTuple):
@@ -71,8 +76,12 @@ class FailOutput(NamedTuple):
     got: str
 
 
+class Pass(NamedTuple):
+    attempt_time_seconds: float
+
+
 type Fail = FailAST | FailConstraints | FailProgramError | FailOutput
-type Result = Fail | None
+type Result = Fail | Pass
 
 
 class Exercise(BaseModel):
@@ -119,7 +128,7 @@ class Exercise(BaseModel):
 
         # CHECK: The code must be valid Python (as in, can be parsed as AST)
         try:
-            python_ast = ast.dump(ast.parse(code))
+            python_ast = ast.parse(code)
         except SyntaxError as se:
             return FailAST(se)
 
@@ -135,7 +144,7 @@ class Exercise(BaseModel):
             return FailConstraints(False, [c.description for c in failed])
 
         # CHECK: The program must execute successfully.
-        result = run_attempt_code(code)
+        result = execute_attempt(code)
         if not result.success:
             return FailProgramError(program_stderr=result.output)
 
@@ -144,4 +153,7 @@ class Exercise(BaseModel):
         if expected != got:
             return FailOutput(expected, got)
 
-        return None
+        return Pass(result.attempt_time_seconds or 0.0)
+
+
+# endregion

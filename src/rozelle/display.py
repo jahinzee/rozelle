@@ -16,6 +16,7 @@ from rozelle.exercise import (
     FailOutput,
     FailAST,
     Result,
+    Pass,
 )
 
 from pathlib import Path
@@ -26,6 +27,8 @@ from rich.columns import Columns
 from rich.padding import Padding
 
 import os
+
+# region private
 
 _BlankLine = Text()
 
@@ -90,8 +93,14 @@ def _get_result_text(result: Result) -> tuple[Text, Text, Group | None]:
             Group(Syntax(got, "text", line_numbers=True, background_color="default")),
         )
 
-    assert result is None
-    return (BADGE_PASS, Text("Your program is correct!"), None)
+    if type(result) is Pass:
+        return (
+            BADGE_PASS,
+            Text("Your program is correct!"),
+            Group(Text(f"Execution time: {result.attempt_time_seconds}s")),
+        )
+
+    raise ValueError
 
 
 def _display_result(console: Console, result: Result):
@@ -163,6 +172,10 @@ def _display_exercise(console: Console, exercise: Exercise):
     )
 
 
+# endregion
+# region public
+
+
 def display_run(
     exercise: Exercise,
     exercise_name: str,
@@ -195,3 +208,6 @@ def display_run(
     _display_result(console, result)
 
     console.rule(style="bright_black")
+
+
+# endregion

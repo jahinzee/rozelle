@@ -22,7 +22,7 @@ class Constraint(BaseModel):
     min_required: Optional[int] = Field(None)
     max_allowed: Optional[int] = Field(None)
 
-    def check(self, python_ast: ast.AST | str) -> bool:
+    def check(self, python_ast: ast.AST) -> bool:
         """
         Returns true if the provided Python code (AST) satisfies
         this constraint.
@@ -36,10 +36,7 @@ class Constraint(BaseModel):
         Returns:
             bool: True if the code passes the constraint.
         """
-        if type(python_ast) is ast.AST:
-            python_ast = ast.dump(python_ast)
-
-        matches = self.ast_regex.findall(python_ast)
+        matches = self.ast_regex.findall(ast.dump(python_ast))
         count = len(matches)
 
         return not any(
@@ -60,13 +57,13 @@ def DisallowedFunctionConstraint(name: str) -> Constraint:
 
 
 def check_constraints(
-    python_ast: str, constrainsts: list[Constraint]
+    python_ast: ast.AST, constrainsts: list[Constraint]
 ) -> list[Constraint]:
     """
     Check if a given Python AST follows the specified list of constraints.
 
     Args:
-        python_ast (str): the Python AST to examine.
+        python_ast (ast.AST): the Python AST to examine.
         constrainsts (list[Constraint]): the list of constraints to check against.
 
     Returns:

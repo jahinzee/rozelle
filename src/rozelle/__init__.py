@@ -20,7 +20,8 @@ import sys
 
 def parse_args() -> Namespace:
     """
-    Parses command-line arguments
+    Parses command-line arguments. Exits the program for invalid arguments or if help text is
+    to be displayed.
 
     Returns:
         Namespace: the parsed arguments.
