@@ -12,7 +12,7 @@ __package__ = "rozelle"
 from langchain_sandbox import PyodideSandbox
 from langchain_sandbox.pyodide import CodeExecutionResult
 from functools import cache
-from typing import Optional, NamedTuple
+from typing import Optional, NamedTuple, Self
 from io import StringIO
 from pydantic import BaseModel, ValidationError
 
@@ -118,11 +118,23 @@ async def _sandbox_execute_with_timeout(
 # region public
 
 
+class ExecutionOutputs(NamedTuple):
+    prerun: str
+    attempt: str
+    postrun: str
+
+
 class ExecutionResult(NamedTuple):
-    success: bool
-    output: str
+    output: str | ExecutionOutputs
     tokens: Optional[set[str]]
     attempt_time_seconds: Optional[float]
+
+    def is_successful(self):
+        return type(self.output) is ExecutionOutputs
+
+    @classmethod
+    def fail(cls, msg: str) -> Self:
+        return cls(msg, None, None)
 
 
 def execute_attempt(
@@ -201,7 +213,6 @@ def execute_attempt(
             prepared = _prepare_python_source(a.text, mangle_salt=a.mangle_salt)
         except SyntaxError as se:
             return ExecutionResult(
-                success=False,
                 output=(f"SyntaxError at <{a.name}> on line {se.lineno}:\n  {se.msg}"),
                 tokens=None,
                 attempt_time_seconds=None,
@@ -215,7 +226,6 @@ def execute_attempt(
 
     if sandbox_result is None:
         return ExecutionResult(
-            success=False,
             output="The attempt took too long to execute.",
             tokens=None,
             attempt_time_seconds=None,
@@ -225,7 +235,6 @@ def execute_attempt(
         # Program execution failed for some reason, could be a syntax error or runtime error.
         #
         return ExecutionResult(
-            success=False,
             output=_process_error_output(sandbox_result.stderr),
             tokens=None,
             attempt_time_seconds=None,
@@ -238,7 +247,6 @@ def execute_attempt(
         # Pyodide gave us a None stdout for some reason.
         #
         return ExecutionResult(
-            success=False,
             output="Standard output could not be accessed.",
             tokens=None,
             attempt_time_seconds=None,
@@ -254,25 +262,26 @@ def execute_attempt(
                 )
             )
         )
-        print(result)
+        # print(result)
+    except IndexError as ie:
+        return ExecutionResult.fail(
+            f"The sandbox failed to return a valid result ({type(ie).__name__})"
+        )
     except json.JSONDecodeError as jsonde:
-        return ExecutionResult(
-            success=False,
-            output=f"The sandbox failed to return a valid result ({jsonde.msg})",
-            tokens=None,
-            attempt_time_seconds=0.0,
+        return ExecutionResult.fail(
+            f"The sandbox failed to return a valid result ({jsonde.msg})"
         )
     except ValidationError as ve:
-        return ExecutionResult(
-            success=False,
-            output=f"The sandbox failed to return a valid result ({ve.errors})",
-            tokens=None,
-            attempt_time_seconds=0.0,
+        return ExecutionResult.fail(
+            f"The sandbox failed to return a valid result ({ve.errors})"
         )
 
     return ExecutionResult(
-        success=True,
-        output="\n".join(result.stdout),
+        output=ExecutionOutputs(
+            prerun="\n".join(result.diagnostics.stdout_prerun),
+            attempt="\n".join(result.stdout),
+            postrun="\n".join(result.diagnostics.stdout_postrun),
+        ),
         tokens=result.tokens,
         attempt_time_seconds=result.attempt_time_seconds,
     )

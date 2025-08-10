@@ -14,9 +14,10 @@ from rozelle.constraints import (
     DisallowedFunctionConstraint,
     check_constraints,
 )
-from rozelle.sandbox import execute_attempt
+from rozelle.sandbox import execute_attempt, ExecutionOutputs
 
-from typing import NamedTuple, Self
+from enum import Enum
+from typing import NamedTuple, Self, Optional
 from pydantic import BaseModel, Field
 from pathlib import Path
 
@@ -52,7 +53,8 @@ class FailAST(NamedTuple):
 
 class FailConstraints(NamedTuple):
     """
-    The program failed to pass the exercise, as the source code failed to pass the exercise's constraints.
+    The program failed to pass the exercise, as the source code failed to pass the exercise's
+    constraints.
     """
 
     critical: bool
@@ -84,12 +86,39 @@ type Fail = FailAST | FailConstraints | FailProgramError | FailOutput
 type Result = Fail | Pass
 
 
+class ExerciseOutputSelection(Enum):
+    Attempt = "attempt"
+    Postrun = "postrun"
+    NoCheck = "no-check"
+
+    def get_output_stream(self, outputs: ExecutionOutputs) -> Optional[str]:
+        match self:
+            case ExerciseOutputSelection.Attempt:
+                return outputs.attempt.strip()
+            case ExerciseOutputSelection.Postrun:
+                return outputs.postrun.strip()
+            case ExerciseOutputSelection.NoCheck:
+                return None
+
+
+class ExerciseDefinedCode(BaseModel):
+    prerun: str = Field(default="")
+    postrun: str = Field(default="")
+
+
 class Exercise(BaseModel):
     message: str
     expected_output: str
     constraints: list[Constraint] = Field([])
+
     hide_constraints: bool = Field(default=False)
     hide_expected_output: bool = Field(default=False)
+
+    code: ExerciseDefinedCode = Field(default_factory=ExerciseDefinedCode)
+
+    check_expected_output_from: ExerciseOutputSelection = Field(
+        default=ExerciseOutputSelection.Attempt
+    )
 
     @classmethod
     def from_toml(cls, toml_file: Path) -> Self:
@@ -112,7 +141,8 @@ class Exercise(BaseModel):
 
     def run(self, python_file: Path) -> Result:
         """
-        Runs the exercise on the given Python file, and returns if it passed, or if and where it fails.
+        Runs the exercise on the given Python file, and returns if it passed, or if and where it
+        fails.
 
         Args:
             python_file (Path): the Python source code file.
@@ -144,13 +174,18 @@ class Exercise(BaseModel):
             return FailConstraints(False, [c.description for c in failed])
 
         # CHECK: The program must execute successfully.
-        result = execute_attempt(code)
-        if not result.success:
+        result = execute_attempt(
+            code, exercise_prerun=self.code.prerun, exercise_postrun=self.code.postrun
+        )
+        if not result.is_successful():
+            assert type(result.output) is str
             return FailProgramError(program_stderr=result.output)
 
+        assert type(result.output) is ExecutionOutputs
         # CHECK: The program's output must match the exercises's expected output.
-        expected, got = self.expected_output.strip(), result.output.strip()
-        if expected != got:
+        expected = self.expected_output.strip()
+        got = self.check_expected_output_from.get_output_stream(result.output)
+        if got is not None and expected != got:
             return FailOutput(expected, got)
 
         return Pass(result.attempt_time_seconds or 0.0)
