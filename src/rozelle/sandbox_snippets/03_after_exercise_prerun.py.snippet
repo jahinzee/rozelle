@@ -1,2 +1,8 @@
-_RZ_MANGLE__module_time = __import__("time")
-_RZ_MANGLE__timer_start = _RZ_MANGLE__module_time.perf_counter()
+__import__("sys").stdout = _RM__buffer_original
+_RM__prerun_lines = _RM__prerun_buffer.getvalue().splitlines()
+del _RM__prerun_buffer
+
+_RM__timer_start = __import__("time").perf_counter()
+
+_RM__attempt_buffer = __import__("io").StringIO()
+__import__("sys").stdout = _RM__attempt_buffer

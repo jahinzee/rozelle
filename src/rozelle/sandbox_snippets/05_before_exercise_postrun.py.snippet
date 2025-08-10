@@ -1,8 +1,14 @@
-_RZ_MANGLE__timer_end = _RZ_MANGLE__module_time.perf_counter()
-_RZ_MANGLE__attempt_execution_time = _RZ_MANGLE__timer_end - _RZ_MANGLE__timer_start
-_RZ_MANGLE__attempt_execution_time = round(_RZ_MANGLE__attempt_execution_time, 2)
+__import__("sys").stdout = _RM__buffer_original
+_RM__attempt_lines = _RM__attempt_buffer.getvalue().splitlines()
+del _RM__attempt_buffer
 
-__import__("sys").stdout = _RZ_MANGLE__real_stdout
+_RM__timer_end = __import__("time").perf_counter()
+_RM__attempt_time_seconds = round(_RM__timer_end - _RM__timer_start, 2)
+
 rozelle = __import__("types").SimpleNamespace()
-rozelle.stdout = _RZ_MANGLE__fake_stdout.getvalue().splitlines()
+rozelle.stdout = _RM__attempt_lines
+rozelle.attempt_time_seconds = _RM__attempt_time_seconds
 rozelle.tokens = set[str]()
+
+_RM__postrun_buffer = __import__("io").StringIO()
+__import__("sys").stdout = _RM__postrun_buffer

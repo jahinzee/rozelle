@@ -50,10 +50,16 @@ def _mangle_identifier_if_possible(name: str, salt: int) -> str:
     )
 
 
+class _ExecutionDiagnostics(BaseModel):
+    stdout_prerun: list[str]
+    stdout_postrun: list[str]
+
+
 class _ExecutionStreamResults(BaseModel):
     stdout: list[str]
     tokens: set[str]
     attempt_time_seconds: float
+    diagnostics: _ExecutionDiagnostics
 
 
 class _SnippetAssemblyContext(NamedTuple):

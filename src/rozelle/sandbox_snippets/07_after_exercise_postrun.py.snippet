@@ -1,8 +1,18 @@
-# ruff: noqa: F821
-print("--- BEGIN JSON RESPONSE ---")
-print(__import__("json").dumps({
-    "stdout": rozelle.stdout,
+__import__("sys").stdout = _RM__buffer_original
+_RM__postrun_lines = _RM__postrun_buffer.getvalue().splitlines()
+del _RM__postrun_buffer
+
+
+_RZ_MANGLE__json_output = {
+    "stdout": _RM__attempt_lines,
     "tokens": list(rozelle.tokens),
-    "attempt_time_seconds": _RZ_MANGLE__attempt_execution_time
-}))
+    "attempt_time_seconds": _RM__attempt_time_seconds,
+    "diagnostics": {
+        "stdout_prerun": _RM__prerun_lines,
+        "stdout_postrun": _RM__postrun_lines,
+    },
+}
+
+print("--- BEGIN JSON RESPONSE ---")
+print(__import__("json").dumps(_RZ_MANGLE__json_output))
 print("--- END JSON RESPONSE ---")
