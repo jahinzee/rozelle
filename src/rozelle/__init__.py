@@ -84,7 +84,10 @@ def parse_args() -> Namespace:
         "-s",
         "--select",
         action="store_true",
-        help="run an exercise selected from a menu with its attempt file (requires 'fzf' to be installed; overrides '-r/--random')",
+        help=(
+            "run an exercise selected from a menu with its attempt file (requires 'fzf' to be"
+            "installed; overrides '-r/--random')"
+        ),
     )
 
     return parser.parse_args()
