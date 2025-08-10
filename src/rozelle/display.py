@@ -152,7 +152,7 @@ def _display_exercise(console: Console, exercise: Exercise):
     )
     constraints: list[ConsoleRenderable] = (
         []
-        if exercise.hide_constraints
+        if exercise.hide_constraints or len(exercise.constraints) == 0
         else [
             _BlankLine,
             Text("Constraints:", style="blue"),
