@@ -1,6 +1,6 @@
 [project]
 name = "rozelle"
-version = "0.1.5"
+version = "0.2.0"
 description = "A TUI-based Python code exercise runner."
 readme = "README.md"
 license = { file = "LICENSE.txt" }
