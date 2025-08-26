@@ -11,52 +11,64 @@ __package__ = "rozelle"
 
 from typing import Optional
 from pydantic import BaseModel, Field
+from enum import Enum
 
-import re
 import ast
 
 
-class Constraint(BaseModel):
-    description: str
-    ast_regex: re.Pattern
-    min_required: Optional[int] = Field(None)
-    max_allowed: Optional[int] = Field(None)
+class ConstraintType(Enum):
+    Call = "call"
+    Node = "node"
 
-    def check(self, python_ast: ast.AST) -> bool:
-        """
-        Returns true if the provided Python code (AST) satisfies
-        this constraint.
 
-        Args:
-            python_ast (ast.AST): the AST of the code to check.
+class ConstraintLimit(BaseModel, frozen=True):
+    minimum: Optional[int] = Field(None)
+    maximum: Optional[int] = Field(None)
 
-        Throws:
-            SyntaxError: the Python source has invalid syntax.
-
-        Returns:
-            bool: True if the code passes the constraint.
-        """
-        matches = self.ast_regex.findall(ast.dump(python_ast))
-        count = len(matches)
-
-        min_satisfied = self.min_required is None or count >= self.min_required
-        max_satisfied = self.max_allowed is None or count <= self.max_allowed
-
+    def is_satisfied(self, count: int) -> bool:
+        min_satisfied = self.minimum is None or count >= self.minimum
+        max_satisfied = self.maximum is None or count <= self.maximum
         return min_satisfied and max_satisfied
+
+
+class Constraint(BaseModel, frozen=True):
+    description: str
+    on: ConstraintType
+    match: str
+    limits: ConstraintLimit = Field(default=ConstraintLimit(minimum=None, maximum=None))
 
 
 def DisallowedFunctionConstraint(name: str) -> Constraint:
     return Constraint(
         description=f"You cannot use the `{name}` function.",
-        ast_regex=re.compile(r"func=Name\(id='" + name + r"', ctx=Load\(\)\)"),
-        min_required=0,
-        max_allowed=0,
+        on=ConstraintType.Call,
+        match=name,
+        limits=ConstraintLimit(minimum=None, maximum=0),
     )
+
+
+class ConstraintScanner(ast.NodeVisitor):
+    def __init__(self, constraints: list[Constraint]):
+        self.constraint_counts = {c: 0 for c in constraints}
+
+    def generic_visit(self, node):
+        for c in self.constraint_counts.keys():
+            if c.on == ConstraintType.Node and type(node).__name__ == c.match:
+                self.constraint_counts[c] += 1
+
+            if (
+                isinstance(node, ast.Call)
+                and c.on == ConstraintType.Call
+                and node.func.id == c.match
+            ):
+                self.constraint_counts[c] += 1
+
+        ast.NodeVisitor.generic_visit(self, node)
 
 
 def check_constraints(
     python_ast: ast.AST, constraints: list[Constraint]
-) -> list[Constraint]:
+) -> set[Constraint]:
     """
     Check if a given Python AST follows the specified list of constraints.
 
@@ -66,7 +78,14 @@ def check_constraints(
 
     Returns:
         list[Constraint]: The list of constraints the code failed to satisfy, or an
-                          empty list if the code satisfies all constraints.
+                        empty list if the code satisfies all constraints.
     """
 
-    return [c for c in constraints if not c.check(python_ast)]
+    scanner = ConstraintScanner(constraints)
+    scanner.visit(python_ast)
+
+    return {
+        c
+        for c, count in scanner.constraint_counts.items()
+        if not c.limits.is_satisfied(count)
+    }

@@ -17,11 +17,13 @@ Hello, Dave!
 """
 
 [[constraints]]
-description = "You can only use the `print` function once."
-ast_regex = '''func=Name\(id='print', ctx=Load\(\)\)'''
-max_allowed = 1
+description = "You cannot use the `print` function more than once."
+on = "function"
+match = "print"
+limits = { max = 1 }
 
 [[constraints]]
-description = "You must use atleast one `for` loop."
-ast_regex = '''For\(target='''
-min_required = 1
+description = "You cannot use more than one `for` loop."
+on = "node"
+match = "For"
+limits = { min = 1 }
