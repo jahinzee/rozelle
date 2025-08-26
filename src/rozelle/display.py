@@ -1,4 +1,4 @@
-# Rozelle: module for rich display functions.
+# Rozelle: module for rich display functions and templates.
 #
 # Copyright (C) 2025 Jahin Z. <jahinzee@proton.me>
 #
@@ -21,9 +21,6 @@ from rich.padding import Padding
 import os
 
 # region private
-
-
-# Some reusable CLI rendering templates
 # region templates
 
 # Standard ruff formatting makes the layered parentheses very unruly, so we're temporarily disabling
@@ -57,8 +54,9 @@ def _Exercise(e: ex.Exercise) -> Rt:
             *(() if e.hide_expected_output else (
                 _BlankLine,
                 Text(
-                    f"Expected {'output' 
-                        if e.check_expected_output_from == ex.ExerciseOutputSelection.Attempt 
+                    f"Expected {
+                        'output' 
+                        if e.check_expected_output_from == ex.OutputSelection.Attempt 
                         else 'result'}:",
                     style="blue"),
                 _BlankLine,
@@ -67,7 +65,7 @@ def _Exercise(e: ex.Exercise) -> Rt:
                     "text",
                     line_numbers=True,
                     background_color="default"),
-                *(() if e.check_expected_output_from == ex.ExerciseOutputSelection.Attempt else (
+                *(() if e.check_expected_output_from == ex.OutputSelection.Attempt else (
                     _BlankLine,
                     Text(
                         "Your code does not need to print any output.",
@@ -130,6 +128,8 @@ def _Result(result: ex.Result) -> Rt:
 # fmt: on
 # endregion
 
+_console = Console()
+
 
 def _full_clear_screen():
     if os.name == "nt":
@@ -144,9 +144,8 @@ def _full_clear_screen():
 
 def display_run(
     exercise: ex.Exercise,
-    exercise_name: str,
     python_file: Path,
-    console: Console,
+    *,
     full_clear: bool = False,
 ):
     """
@@ -162,17 +161,17 @@ def display_run(
     if full_clear:
         _full_clear_screen()
 
-    console.clear()
+    _console.clear()
 
-    console.rule(f"Exercise: {exercise_name}", style="blue")
-    console.print(_Exercise(exercise))
+    _console.rule("Exercise", style="blue")
+    _console.print(_Exercise(exercise))
 
-    console.rule(f"Attempt: {python_file}", style="bright_black")
-    with console.status("Evaluating code in sandbox...", spinner="bouncingBar"):
+    _console.rule(f"Attempt: {python_file}", style="bright_black")
+    with _console.status("Evaluating code in sandbox...", spinner="bouncingBar"):
         result = exercise.run(python_file)
 
-    console.print(_Result(result))
-    console.rule(style="bright_black")
+    _console.print(_Result(result))
+    _console.rule(style="bright_black")
 
 
 # endregion

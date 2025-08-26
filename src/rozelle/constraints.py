@@ -39,12 +39,10 @@ class Constraint(BaseModel):
         matches = self.ast_regex.findall(ast.dump(python_ast))
         count = len(matches)
 
-        return not any(
-            (
-                self.min_required is not None and count < self.min_required,
-                self.max_allowed is not None and count > self.max_allowed,
-            )
-        )
+        min_satisfied = self.min_required is None or count >= self.min_required
+        max_satisfied = self.max_allowed is None or count <= self.max_allowed
+
+        return min_satisfied and max_satisfied
 
 
 def DisallowedFunctionConstraint(name: str) -> Constraint:
@@ -57,18 +55,18 @@ def DisallowedFunctionConstraint(name: str) -> Constraint:
 
 
 def check_constraints(
-    python_ast: ast.AST, constrainsts: list[Constraint]
+    python_ast: ast.AST, constraints: list[Constraint]
 ) -> list[Constraint]:
     """
     Check if a given Python AST follows the specified list of constraints.
 
     Args:
         python_ast (ast.AST): the Python AST to examine.
-        constrainsts (list[Constraint]): the list of constraints to check against.
+        constraints (list[Constraint]): the list of constraints to check against.
 
     Returns:
         list[Constraint]: The list of constraints the code failed to satisfy, or an
-                          empty list if the code satisfies all constrainsts.
+                          empty list if the code satisfies all constraints.
     """
 
-    return [c for c in constrainsts if not c.check(python_ast)]
+    return [c for c in constraints if not c.check(python_ast)]

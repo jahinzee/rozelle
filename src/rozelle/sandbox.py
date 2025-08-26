@@ -99,19 +99,19 @@ def _substring_between_two_substrings(input: str, left: str, right: str) -> str:
     return input.split(left, 1)[1].split(right, 1)[0]
 
 
-async def _sandbox_execute_with_timeout(
-    sandbox: PyodideSandbox, code: str
-) -> Optional[CodeExecutionResult]:
-    task = asyncio.create_task(sandbox.execute(code))
+_sandbox = PyodideSandbox(allow_net=False)
 
-    complete, incomplete = await asyncio.wait([task], timeout=_TIMEOUT_SECONDS)
+
+async def _sandbox_execute_with_timeout(code: str) -> Optional[CodeExecutionResult]:
+    task = asyncio.create_task(_sandbox.execute(code))
+
+    complete, incomplete = await asyncio.wait((task,), timeout=_TIMEOUT_SECONDS)
 
     if len(incomplete) != 0:
         task.cancel()
         return None
 
-    result = await next(iter(complete))
-    return result
+    return await next(iter(complete))
 
 
 # endregion
@@ -119,22 +119,29 @@ async def _sandbox_execute_with_timeout(
 
 
 class ExecutionOutputs(NamedTuple):
-    prerun: str
-    attempt: str
-    postrun: str
+    prerun: list[str]
+    attempt: list[str]
+    postrun: list[str]
+    error: list[str]
+
+    @classmethod
+    def from_success(cls, prerun: list[str], attempt: list[str], postrun: list[str]):
+        return cls(prerun, attempt, postrun, [])
+
+    @classmethod
+    def from_error(cls, stderr: list[str]) -> Self:
+        return cls([], [], [], stderr)
 
 
 class ExecutionResult(NamedTuple):
-    output: str | ExecutionOutputs
+    success: bool
+    output: ExecutionOutputs
     tokens: Optional[set[str]]
     attempt_time_seconds: Optional[float]
 
-    def is_successful(self):
-        return type(self.output) is ExecutionOutputs
-
     @classmethod
     def fail(cls, msg: str) -> Self:
-        return cls(msg, None, None)
+        return cls(False, ExecutionOutputs.from_error([msg]), None, None)
 
 
 def execute_attempt(
@@ -169,76 +176,67 @@ def execute_attempt(
     #  * Using start and end signals to filter out any unexpected stdin noise (e.g. from
     #    Pyodide import warnings we can safely ignore)
     #
+
+    # fmt: off
     assembly = (
         _SnippetAssemblyContext(
             name="system, before exercise prerun",
             text=_SNIPPET_01,
-            mangle_salt=_SALT_SYSTEM,
-        ),
-        _SnippetAssemblyContext(
+            mangle_salt=_SALT_SYSTEM),
+        
+        None if exercise_prerun is None else _SnippetAssemblyContext(
             name="exercise prerun",
-            text=exercise_prerun or "",
-            mangle_salt=_SALT_EXERCISE,
-        ),
+            text=exercise_prerun,
+            mangle_salt=_SALT_EXERCISE),
+        
         _SnippetAssemblyContext(
             name="system, after exercise prerun",
             text=_SNIPPET_03,
-            mangle_salt=_SALT_SYSTEM,
-        ),
+            mangle_salt=_SALT_SYSTEM),
+        
         _SnippetAssemblyContext(
-            name="attempt", text=attempt_code, mangle_salt=_SALT_ATTEMPT
-        ),
+            name="attempt",
+            text=attempt_code,
+            mangle_salt=_SALT_ATTEMPT),
+        
         _SnippetAssemblyContext(
             name="system, before exercise postrun",
             text=_SNIPPET_05,
-            mangle_salt=_SALT_SYSTEM,
-        ),
-        _SnippetAssemblyContext(
+            mangle_salt=_SALT_SYSTEM),
+        
+        None if exercise_postrun is None else _SnippetAssemblyContext(
             name="exercise postrun",
-            text=exercise_postrun or "",
-            mangle_salt=_SALT_EXERCISE,
-        ),
+            text=exercise_postrun,
+            mangle_salt=_SALT_EXERCISE),
+        
         _SnippetAssemblyContext(
             name="system, after exercise postrun",
             text=_SNIPPET_07,
-            mangle_salt=_SALT_SYSTEM,
-        ),
+            mangle_salt=_SALT_SYSTEM),
     )
+    # fmt: on
 
     code = StringIO()
     for a in assembly:
-        if len(a.text) == 0:
+        if a is None or len(a.text) == 0:
             continue
         try:
             prepared = _prepare_python_source(a.text, mangle_salt=a.mangle_salt)
         except SyntaxError as se:
-            return ExecutionResult(
-                output=(f"SyntaxError at <{a.name}> on line {se.lineno}:\n  {se.msg}"),
-                tokens=None,
-                attempt_time_seconds=None,
+            return ExecutionResult.fail(
+                (f"Syntax error at <{a.name}> on line {se.lineno}:\n{se.msg}")
             )
         code.write(prepared + "\n\n")
 
-    sandbox = PyodideSandbox(allow_net=False)
-    sandbox_result = asyncio.run(
-        _sandbox_execute_with_timeout(sandbox, code.getvalue())
-    )
+    sandbox_result = asyncio.run(_sandbox_execute_with_timeout(code.getvalue()))
 
     if sandbox_result is None:
-        return ExecutionResult(
-            output="The attempt took too long to execute.",
-            tokens=None,
-            attempt_time_seconds=None,
-        )
+        return ExecutionResult.fail("The attempt took too long to execute.")
 
     if sandbox_result.status != "success":
         # Program execution failed for some reason, could be a syntax error or runtime error.
         #
-        return ExecutionResult(
-            output=_process_error_output(sandbox_result.stderr),
-            tokens=None,
-            attempt_time_seconds=None,
-        )
+        return ExecutionResult.fail(_process_error_output(sandbox_result.stderr))
 
     # Parse stdout from JSON back into a proper newline'd string, extracting from between the
     # previously defined start and end signals.
@@ -246,11 +244,7 @@ def execute_attempt(
     if sandbox_result.stdout is None:
         # Pyodide gave us a None stdout for some reason.
         #
-        return ExecutionResult(
-            output="Standard output could not be accessed.",
-            tokens=None,
-            attempt_time_seconds=None,
-        )
+        return ExecutionResult.fail("Standard output could not be accessed.")
 
     try:
         result = _ExecutionStreamResults.parse_obj(
@@ -277,10 +271,11 @@ def execute_attempt(
         )
 
     return ExecutionResult(
-        output=ExecutionOutputs(
-            prerun="\n".join(result.diagnostics.stdout_prerun),
-            attempt="\n".join(result.stdout),
-            postrun="\n".join(result.diagnostics.stdout_postrun),
+        success=True,
+        output=ExecutionOutputs.from_success(
+            prerun=result.diagnostics.stdout_prerun,
+            attempt=result.stdout,
+            postrun=result.diagnostics.stdout_postrun,
         ),
         tokens=result.tokens,
         attempt_time_seconds=result.attempt_time_seconds,

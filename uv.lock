@@ -456,7 +456,7 @@ wheels = [
 
 [[package]]
 name = "rozelle"
-version = "0.1.4"
+version = "0.1.5"
 source = { editable = "." }
 dependencies = [
     { name = "langchain-sandbox" },

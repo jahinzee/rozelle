@@ -66,7 +66,7 @@ class FailProgramError(NamedTuple):
     The program failed to pass the exercise, as it returned an error.
     """
 
-    program_stderr: str
+    error: str
 
 
 class FailOutput(NamedTuple):
@@ -86,18 +86,18 @@ type Fail = FailAST | FailConstraints | FailProgramError | FailOutput
 type Result = Fail | Pass
 
 
-class ExerciseOutputSelection(Enum):
+class OutputSelection(Enum):
     Attempt = "attempt"
     Postrun = "postrun"
     NoCheck = "no-check"
 
     def get_output_stream(self, outputs: ExecutionOutputs) -> Optional[str]:
         match self:
-            case ExerciseOutputSelection.Attempt:
-                return outputs.attempt.strip()
-            case ExerciseOutputSelection.Postrun:
-                return outputs.postrun.strip()
-            case ExerciseOutputSelection.NoCheck:
+            case OutputSelection.Attempt:
+                return "\n".join(outputs.attempt).strip()
+            case OutputSelection.Postrun:
+                return "\n".join(outputs.postrun).strip()
+            case OutputSelection.NoCheck:
                 return None
 
 
@@ -109,16 +109,14 @@ class ExerciseDefinedCode(BaseModel):
 class Exercise(BaseModel):
     message: str
     expected_output: str
-    constraints: list[Constraint] = Field([])
+    constraints: list[Constraint] = Field(default_factory=list)
 
     hide_constraints: bool = Field(default=False)
     hide_expected_output: bool = Field(default=False)
 
     code: ExerciseDefinedCode = Field(default_factory=ExerciseDefinedCode)
 
-    check_expected_output_from: ExerciseOutputSelection = Field(
-        default=ExerciseOutputSelection.Attempt
-    )
+    check_expected_output_from: OutputSelection = Field(default=OutputSelection.Attempt)
 
     @classmethod
     def from_toml(cls, toml_file: Path) -> Self:
@@ -160,6 +158,7 @@ class Exercise(BaseModel):
         try:
             python_ast = ast.parse(code)
         except SyntaxError as se:
+            se.filename = str(python_file)
             return FailAST(se)
 
         # CHECK: The code must follow critical constraints, such as no imports and no uses of
@@ -177,11 +176,9 @@ class Exercise(BaseModel):
         result = execute_attempt(
             code, exercise_prerun=self.code.prerun, exercise_postrun=self.code.postrun
         )
-        if not result.is_successful():
-            assert type(result.output) is str
-            return FailProgramError(program_stderr=result.output)
+        if not result.success:
+            return FailProgramError(error="\n".join(result.output.error))
 
-        assert type(result.output) is ExecutionOutputs
         # CHECK: The program's output must match the exercises's expected output.
         expected = self.expected_output.strip()
         got = self.check_expected_output_from.get_output_stream(result.output)
