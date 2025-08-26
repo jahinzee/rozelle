@@ -38,10 +38,19 @@ class Constraint(BaseModel, frozen=True):
     limits: ConstraintLimit = Field(default=ConstraintLimit(minimum=None, maximum=None))
 
 
-def DisallowedFunctionConstraint(name: str) -> Constraint:
+def DisallowedCall(name: str) -> Constraint:
     return Constraint(
         description=f"You cannot use the `{name}` function.",
         on=ConstraintType.Call,
+        match=name,
+        limits=ConstraintLimit(minimum=None, maximum=0),
+    )
+
+
+def DisallowedNode(name: str, description: str) -> Constraint:
+    return Constraint(
+        description=description,
+        on=ConstraintType.Node,
         match=name,
         limits=ConstraintLimit(minimum=None, maximum=0),
     )

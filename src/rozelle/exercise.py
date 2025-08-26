@@ -11,7 +11,8 @@ __package__ = "rozelle"
 
 from rozelle.constraints import (
     Constraint,
-    DisallowedFunctionConstraint,
+    DisallowedCall,
+    DisallowedNode,
     check_constraints,
 )
 from rozelle.sandbox import execute_attempt, ExecutionOutputs
@@ -21,22 +22,21 @@ from typing import NamedTuple, Self, Optional
 from pydantic import BaseModel, Field
 from pathlib import Path
 
-import re
 import tomllib
 import ast
 
 # region private
 
 _CRITICAL_CONSTRAINTS = [
-    Constraint(
-        description="You cannot import any other code.",
-        ast_regex=re.compile(r"Import(?:From)?"),
-        min_required=0,
-        max_allowed=0,
-    ),
-    DisallowedFunctionConstraint("exec"),
-    DisallowedFunctionConstraint("eval"),
-    DisallowedFunctionConstraint("open"),
+    DisallowedNode("Import", "You cannot import any other code."),
+    DisallowedNode("FromImport", "You cannot import any other code."),
+    DisallowedCall("exec"),
+    DisallowedCall("eval"),
+    DisallowedCall("open"),
+    DisallowedCall("help"),
+    DisallowedCall("breakpoint"),
+    DisallowedCall("compile"),
+    DisallowedCall("__import__"),
 ]
 
 # endregion
