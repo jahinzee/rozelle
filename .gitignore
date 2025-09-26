@@ -19,4 +19,4 @@ wheels/
 node_modules
 
 # Default scaffolded projects
-rozelle-scaffold
+rozelle-scaffold*

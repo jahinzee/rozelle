@@ -15,13 +15,17 @@ from enum import Enum
 
 import ast
 
+# region private
 
-class ConstraintType(Enum):
+
+class _ConstraintType(Enum):
     Call = "call"
     Node = "node"
+    PassToken = "pass-token"
+    FailToken = "fail-token"
 
 
-class ConstraintLimit(BaseModel, frozen=True):
+class _ConstraintLimit(BaseModel, frozen=True):
     minimum: Optional[int] = Field(None)
     maximum: Optional[int] = Field(None)
 
@@ -31,43 +35,29 @@ class ConstraintLimit(BaseModel, frozen=True):
         return min_satisfied and max_satisfied
 
 
+# endregion
+# region public
+
+
 class Constraint(BaseModel, frozen=True):
     description: str
-    on: ConstraintType
+    on: _ConstraintType
     match: str
-    limits: ConstraintLimit = Field(default=ConstraintLimit(minimum=None, maximum=None))
+    limits: _ConstraintLimit = Field(default=_ConstraintLimit(minimum=None, maximum=None))
 
 
-def DisallowedCall(name: str) -> Constraint:
-    return Constraint(
-        description=f"You cannot use the `{name}` function.",
-        on=ConstraintType.Call,
-        match=name,
-        limits=ConstraintLimit(minimum=None, maximum=0),
-    )
-
-
-def DisallowedNode(name: str, description: str) -> Constraint:
-    return Constraint(
-        description=description,
-        on=ConstraintType.Node,
-        match=name,
-        limits=ConstraintLimit(minimum=None, maximum=0),
-    )
-
-
-class ConstraintScanner(ast.NodeVisitor):
+class _ConstraintScanner(ast.NodeVisitor):
     def __init__(self, constraints: list[Constraint]):
         self.constraint_counts = {c: 0 for c in constraints}
 
     def generic_visit(self, node):
         for c in self.constraint_counts.keys():
-            if c.on == ConstraintType.Node and type(node).__name__ == c.match:
+            if c.on == _ConstraintType.Node and type(node).__name__ == c.match:
                 self.constraint_counts[c] += 1
 
             if (
                 isinstance(node, ast.Call)
-                and c.on == ConstraintType.Call
+                and c.on == _ConstraintType.Call
                 and node.func.id == c.match
             ):
                 self.constraint_counts[c] += 1
@@ -75,26 +65,62 @@ class ConstraintScanner(ast.NodeVisitor):
         ast.NodeVisitor.generic_visit(self, node)
 
 
-def check_constraints(
-    python_ast: ast.AST, constraints: list[Constraint]
-) -> set[Constraint]:
+def DisallowedCall(name: str) -> Constraint:
+    return Constraint(
+        description=f"You cannot use the `{name}` function.",
+        on=_ConstraintType.Call,
+        match=name,
+        limits=_ConstraintLimit(minimum=None, maximum=0),
+    )
+
+
+def DisallowedNode(name: str, description: str) -> Constraint:
+    return Constraint(
+        description=description,
+        on=_ConstraintType.Node,
+        match=name,
+        limits=_ConstraintLimit(minimum=None, maximum=0),
+    )
+
+
+def check_syntax_constraints(python_ast: ast.AST, constraints: list[Constraint]) -> set[Constraint]:
     """
-    Check if a given Python AST follows the specified list of constraints.
+    Check if a given Python AST follows all the syntax constraints in `constraints`.
 
     Args:
         python_ast (ast.AST): the Python AST to examine.
         constraints (list[Constraint]): the list of constraints to check against.
 
     Returns:
-        list[Constraint]: The list of constraints the code failed to satisfy, or an
-                        empty list if the code satisfies all constraints.
+        set[Constraint]: The list of constraints the code failed to satisfy, or an
+                         empty list if the code satisfies all constraints.
     """
 
-    scanner = ConstraintScanner(constraints)
+    scanner = _ConstraintScanner(constraints)
     scanner.visit(python_ast)
 
-    return {
-        c
-        for c, count in scanner.constraint_counts.items()
-        if not c.limits.is_satisfied(count)
-    }
+    return {c for c, count in scanner.constraint_counts.items() if not c.limits.is_satisfied(count)}
+
+
+def check_token_constraints(tokens: set[str], constraints: list[Constraint]) -> set[Constraint]:
+    """
+    Check if a given set of execution tokens follows all the postrun constraints in `constraints`.
+
+    Args:
+        tokens (set[str]): the tokens collected after code execution.
+        constraints (list[Constraint]): the list of constraints to check against.
+
+    Returns:
+        set[Constraint]: The list of constraints the code failed to satisfy, or an
+                         empty list if the code satisfies all constraints.
+    """
+    # fmt: off
+    return { c for c in constraints
+             if c.on == _ConstraintType.PassToken and c.match not in tokens
+           } | {
+             c for c in constraints
+             if c.on == _ConstraintType.FailToken and c.match in tokens }
+    # fmt: on
+
+
+# endregion
