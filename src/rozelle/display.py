@@ -96,10 +96,15 @@ def _Result(result: ex.Result) -> Rt:
                 Text("Your program cannot be examined due to a syntax error."),
                 Text(str(error)))
            
-        case ex.FailConstraints(critical, descriptions):
+        case ex.FailConstraints(critical, from_tokens, descriptions):
             return _ResultTemplate(
                 _BadgeFail,
-                Text((f"Your program failed to satisfy {"critical" if critical else "these"} "
+                Text((f"Your program failed to satisfy {
+                            "critical" if critical else 
+                            f"these {
+                                "postrun"
+                                if from_tokens
+                                else "syntax"}"} "
                        "constraints.")),
                 *(_ListItem(d) for d in descriptions))
 

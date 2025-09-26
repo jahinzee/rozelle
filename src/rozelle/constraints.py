@@ -11,62 +11,116 @@ __package__ = "rozelle"
 
 from typing import Optional
 from pydantic import BaseModel, Field
+from enum import Enum
 
-import re
 import ast
 
+# region private
 
-class Constraint(BaseModel):
-    description: str
-    ast_regex: re.Pattern
-    min_required: Optional[int] = Field(None)
-    max_allowed: Optional[int] = Field(None)
 
-    def check(self, python_ast: ast.AST) -> bool:
-        """
-        Returns true if the provided Python code (AST) satisfies
-        this constraint.
+class _ConstraintType(Enum):
+    Call = "call"
+    Node = "node"
+    PassToken = "pass-token"
+    FailToken = "fail-token"
 
-        Args:
-            python_ast (ast.AST): the AST of the code to check.
 
-        Throws:
-            SyntaxError: the Python source has invalid syntax.
+class _ConstraintLimit(BaseModel, frozen=True):
+    minimum: Optional[int] = Field(None)
+    maximum: Optional[int] = Field(None)
 
-        Returns:
-            bool: True if the code passes the constraint.
-        """
-        matches = self.ast_regex.findall(ast.dump(python_ast))
-        count = len(matches)
-
-        min_satisfied = self.min_required is None or count >= self.min_required
-        max_satisfied = self.max_allowed is None or count <= self.max_allowed
-
+    def is_satisfied(self, count: int) -> bool:
+        min_satisfied = self.minimum is None or count >= self.minimum
+        max_satisfied = self.maximum is None or count <= self.maximum
         return min_satisfied and max_satisfied
 
 
-def DisallowedFunctionConstraint(name: str) -> Constraint:
+# endregion
+# region public
+
+
+class Constraint(BaseModel, frozen=True):
+    description: str
+    on: _ConstraintType
+    match: str
+    limits: _ConstraintLimit = Field(default=_ConstraintLimit(minimum=None, maximum=None))
+
+
+class _ConstraintScanner(ast.NodeVisitor):
+    def __init__(self, constraints: list[Constraint]):
+        self.constraint_counts = {c: 0 for c in constraints}
+
+    def generic_visit(self, node):
+        for c in self.constraint_counts.keys():
+            if c.on == _ConstraintType.Node and type(node).__name__ == c.match:
+                self.constraint_counts[c] += 1
+
+            if (
+                isinstance(node, ast.Call)
+                and c.on == _ConstraintType.Call
+                and node.func.id == c.match
+            ):
+                self.constraint_counts[c] += 1
+
+        ast.NodeVisitor.generic_visit(self, node)
+
+
+def DisallowedCall(name: str) -> Constraint:
     return Constraint(
         description=f"You cannot use the `{name}` function.",
-        ast_regex=re.compile(r"func=Name\(id='" + name + r"', ctx=Load\(\)\)"),
-        min_required=0,
-        max_allowed=0,
+        on=_ConstraintType.Call,
+        match=name,
+        limits=_ConstraintLimit(minimum=None, maximum=0),
     )
 
 
-def check_constraints(
-    python_ast: ast.AST, constraints: list[Constraint]
-) -> list[Constraint]:
+def DisallowedNode(name: str, description: str) -> Constraint:
+    return Constraint(
+        description=description,
+        on=_ConstraintType.Node,
+        match=name,
+        limits=_ConstraintLimit(minimum=None, maximum=0),
+    )
+
+
+def check_syntax_constraints(python_ast: ast.AST, constraints: list[Constraint]) -> set[Constraint]:
     """
-    Check if a given Python AST follows the specified list of constraints.
+    Check if a given Python AST follows all the syntax constraints in `constraints`.
 
     Args:
         python_ast (ast.AST): the Python AST to examine.
         constraints (list[Constraint]): the list of constraints to check against.
 
     Returns:
-        list[Constraint]: The list of constraints the code failed to satisfy, or an
-                          empty list if the code satisfies all constraints.
+        set[Constraint]: The list of constraints the code failed to satisfy, or an
+                         empty list if the code satisfies all constraints.
     """
 
-    return [c for c in constraints if not c.check(python_ast)]
+    scanner = _ConstraintScanner(constraints)
+    scanner.visit(python_ast)
+
+    return {c for c, count in scanner.constraint_counts.items() if not c.limits.is_satisfied(count)}
+
+
+def check_token_constraints(tokens: set[str], constraints: list[Constraint]) -> set[Constraint]:
+    """
+    Check if a given set of execution tokens follows all the postrun constraints in `constraints`.
+
+    Args:
+        tokens (set[str]): the tokens collected after code execution.
+        constraints (list[Constraint]): the list of constraints to check against.
+
+    Returns:
+        set[Constraint]: The list of constraints the code failed to satisfy, or an
+                         empty list if the code satisfies all constraints.
+    """
+    # fmt: off
+    return { c for c in constraints
+             if c.on == _ConstraintType.PassToken and c.match not in tokens
+           } | {
+             c for c in constraints
+             if c.on == _ConstraintType.FailToken and c.match in tokens }
+    # fmt: on
+
+
+# endregion

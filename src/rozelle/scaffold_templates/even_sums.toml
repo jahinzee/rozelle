@@ -1,0 +1,54 @@
+# rozelle-scaffold: Even sums (example exercise)
+#
+# Any copyright is dedicated to the Public Domain.
+# https://creativecommons.org/publicdomain/zero/1.0/
+#
+
+message = """
+Can you write a function named `even_sums(a, b)` that returns the sum of every even number from \
+`a` to `b`?
+
+Assume `a < b`, neither `a` not `b` are negative, and both bounds are inclusive.
+"""
+
+# example = """
+# def even_sums(a, b):
+#    return sum(i for i in range(a, b + 1) if i % 2 == 0)
+# """
+
+expected_output = """
+even_sums(0, 10) == 30
+even_sums(3, 7) == 10
+even_sums(0, 1) == 0
+"""
+
+check_expected_output_from = "no-check"
+
+[[constraints]]
+description = "There must be a function `even_sums`."
+on = "fail-token"
+match = "function-not-found"
+
+[[constraints]]
+description = "The function must produce the expected result."
+on = "pass-token"
+match = "function-output-correct"
+
+[code]
+postrun = """
+_RM__inputs = {
+    (0, 10): 30,
+    (3, 7): 10,
+    (0, 1): 0
+}
+
+try:
+    for inputs, output in _RM__inputs.items():
+        if even_sums(*inputs) != output:
+            raise ValueError
+    rozelle.tokens.add("function-output-correct")
+except NameError:
+    rozelle.tokens.add("function-not-found")
+except ValueError:
+    pass
+"""

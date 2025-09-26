@@ -11,8 +11,10 @@ __package__ = "rozelle"
 
 from rozelle.constraints import (
     Constraint,
-    DisallowedFunctionConstraint,
-    check_constraints,
+    DisallowedCall,
+    DisallowedNode,
+    check_syntax_constraints,
+    check_token_constraints,
 )
 from rozelle.sandbox import execute_attempt, ExecutionOutputs
 
@@ -21,22 +23,21 @@ from typing import NamedTuple, Self, Optional
 from pydantic import BaseModel, Field
 from pathlib import Path
 
-import re
 import tomllib
 import ast
 
 # region private
 
 _CRITICAL_CONSTRAINTS = [
-    Constraint(
-        description="You cannot import any other code.",
-        ast_regex=re.compile(r"Import(?:From)?"),
-        min_required=0,
-        max_allowed=0,
-    ),
-    DisallowedFunctionConstraint("exec"),
-    DisallowedFunctionConstraint("eval"),
-    DisallowedFunctionConstraint("open"),
+    DisallowedNode("Import", "You cannot import any other code."),
+    DisallowedNode("FromImport", "You cannot import any other code."),
+    DisallowedCall("exec"),
+    DisallowedCall("eval"),
+    DisallowedCall("open"),
+    DisallowedCall("help"),
+    DisallowedCall("breakpoint"),
+    DisallowedCall("compile"),
+    DisallowedCall("__import__"),
 ]
 
 # endregion
@@ -58,6 +59,7 @@ class FailConstraints(NamedTuple):
     """
 
     critical: bool
+    from_tokens: bool
     failed_constraint_descriptions: list[str]
 
 
@@ -161,16 +163,16 @@ class Exercise(BaseModel):
             se.filename = str(python_file)
             return FailAST(se)
 
-        # CHECK: The code must follow critical constraints, such as no imports and no uses of
+        # CHECK: The code must follow critical  syntax constraints, such as no imports and no uses of
         #        eval/exec.
-        failed_criticals = check_constraints(python_ast, _CRITICAL_CONSTRAINTS)
+        failed_criticals = check_syntax_constraints(python_ast, _CRITICAL_CONSTRAINTS)
         if len(failed_criticals) != 0:
-            return FailConstraints(True, [c.description for c in failed_criticals])
+            return FailConstraints(True, False, [c.description for c in failed_criticals])
 
-        # CHECK: The code must follow all of the exercises's specified constraints.
-        failed = check_constraints(python_ast, self.constraints)
-        if len(failed) != 0:
-            return FailConstraints(False, [c.description for c in failed])
+        # CHECK: The code must follow all of the exercises's specified syntax constraints.
+        failed_syntax = check_syntax_constraints(python_ast, self.constraints)
+        if len(failed_syntax) != 0:
+            return FailConstraints(False, False, [c.description for c in failed_syntax])
 
         # CHECK: The program must execute successfully.
         result = execute_attempt(
@@ -178,6 +180,11 @@ class Exercise(BaseModel):
         )
         if not result.success:
             return FailProgramError(error="\n".join(result.output.error))
+
+        # CHECK: The code must follow all of the exercises's specified token constraints.
+        failed_tokens = check_token_constraints(result.tokens or set(), self.constraints)
+        if len(failed_tokens) != 0:
+            return FailConstraints(False, True, [c.description for c in failed_tokens])
 
         # CHECK: The program's output must match the exercises's expected output.
         expected = self.expected_output.strip()
