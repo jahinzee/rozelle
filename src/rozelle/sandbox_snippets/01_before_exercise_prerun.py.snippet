@@ -1,6 +1,18 @@
 # ruff: noqa
+# fmt: off
 
-_RM__buffer_original = __import__("sys").stdout
+_RM__import = __import__
+_RM__buffer_original = _RM__import("sys").stdout
+_RM__prerun_buffer = _RM__import("io").StringIO()
+_RM__import("sys").stdout = _RM__prerun_buffer
 
-_RM__prerun_buffer = __import__("io").StringIO()
-__import__("sys").stdout = _RM__prerun_buffer
+def _RM__panic_blocked_call(*_a, **_k): raise RuntimeError(
+    "attempted call to blocked built-in function")
+
+exec = _RM__panic_blocked_call
+eval = _RM__panic_blocked_call
+open = _RM__panic_blocked_call
+help = _RM__panic_blocked_call
+breakpoint = _RM__panic_blocked_call
+compile = _RM__panic_blocked_call
+__import__ = _RM__panic_blocked_call
