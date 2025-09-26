@@ -1,0 +1,34 @@
+# rozelle-scaffold: Hello, World! (example exercise)
+#
+# Any copyright is dedicated to the Public Domain.
+# https://creativecommons.org/publicdomain/zero/1.0/
+#
+
+message = """
+Can you write some Python code to say hello to Alice, Bob, Carol, and David with a for loop and \
+only one print statement?
+"""
+
+# example = """
+# for name in ["Alice", "Bob", "Carol", "David"]:
+#    print(f"Hello, {name}!")
+# """
+
+expected_output = """
+Hello, Alice!
+Hello, Bob!
+Hello, Carol!
+Hello, Dave!
+"""
+
+[[constraints]]
+description = "You must use at least one `for` loop."
+on = "node"
+match = "For"
+limits = { minimum = 1 }
+
+[[constraints]]
+description = "You cannot use the `print` function more than once."
+on = "call"
+match = "print"
+limits = { maximum = 1 }

@@ -28,7 +28,8 @@ SCAFFOLD_ROOT = Path("./rozelle-scaffold/")
 _SCAFFOLD_EXERCISES = Path("exercises/")
 _SCAFFOLD_ATTEMPT = Path("attempt.py")
 
-_SCAFFOLD_EXERCISE_TEXT = read_text(scaffold_templates, "example.toml")
+_SCAFFOLD_EXERCISE_PATHS = ("even_sums.toml", "hello.toml")
+_SCAFFOLD_EXERCISE_TEXTS = ((p, read_text(scaffold_templates, p)) for p in _SCAFFOLD_EXERCISE_PATHS)
 
 
 def _get_file_tree(root: Path) -> dict[Path, str]:
@@ -41,10 +42,12 @@ def _get_file_tree(root: Path) -> dict[Path, str]:
     Returns:
         dict[Path, str]: a mapping of file paths to their contents.
     """
-    return {
-        Path(root / _SCAFFOLD_EXERCISES / "example.toml"): _SCAFFOLD_EXERCISE_TEXT,
-        Path(root / _SCAFFOLD_ATTEMPT): "",
-    }
+    # fmt: off
+    return { Path(root / _SCAFFOLD_EXERCISES / fp): txt 
+             for fp, txt in _SCAFFOLD_EXERCISE_TEXTS
+           } | {
+             Path(root / _SCAFFOLD_ATTEMPT): "" }
+    # fmt: on
 
 
 def _get_scaffold_exercises(scaffold_root: Path) -> list[Path]:
