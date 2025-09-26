@@ -9,17 +9,17 @@
 
 __package__ = "rozelle"
 
+from io import StringIO
 from langchain_sandbox import PyodideSandbox
 from langchain_sandbox.pyodide import CodeExecutionResult
-from functools import cache
-from typing import Optional, NamedTuple, Self
-from io import StringIO
 from pydantic import BaseModel, ValidationError
+from typing import Optional, NamedTuple, Self
 
 import ast
+import asyncio
+import hashlib
 import json
 import secrets
-import asyncio
 
 from importlib.resources import read_text
 from . import sandbox_snippets as snippets
@@ -33,21 +33,26 @@ _SNIPPET_07 = read_text(snippets, "07_after_exercise_postrun.py.snippet")
 
 _SALT_SYSTEM = 0
 _SALT_EXERCISE = 1
-_SALT_ATTEMPT: None = None
+_SALT_ATTEMPT: Optional[int] = None
 
 _TIMEOUT_SECONDS = 20
 
+_MANGLE_PREFIX = "_RZ_MANGLE__"
 
-@cache
-def _mangle_identifier_if_possible(name: str, salt: int) -> str:
-    MANGLE_PREFIX = "_RZ_MANGLE__"
-    return (
-        name.replace(
-            MANGLE_PREFIX, f"_rozelle_mangled_{salt}_{secrets.token_hex(8)}__", count=1
-        )
-        if name.startswith(MANGLE_PREFIX)
-        else name
-    )
+
+def _generate_pepper() -> bytes:
+    return secrets.token_bytes(16)
+
+
+def _mangle_identifier_if_possible(name: str, salt: int, pepper: bytes) -> str:
+    if not name.startswith(_MANGLE_PREFIX):
+        return name
+
+    hash_obj = hashlib.new("sha256")
+    hash_obj.update(pepper + bytes(salt) + name.encode())
+
+    trimmed_name = name.removeprefix(_MANGLE_PREFIX)
+    return f"_rozelle_mangled__{trimmed_name}_{salt}_{hash_obj.hexdigest()[:16]}__"
 
 
 class _ExecutionDiagnostics(BaseModel):
@@ -69,19 +74,27 @@ class _SnippetAssemblyContext(NamedTuple):
 
 
 class _NameMangler(ast.NodeTransformer):
-    def __init__(self, salt):
+    def __init__(self, salt, pepper):
         self.salt = salt
+        self.pepper = pepper
 
     def visit_Name(self, node: ast.Name):
         return ast.Name(
-            id=_mangle_identifier_if_possible(node.id, self.salt), ctx=node.ctx
+            id=_mangle_identifier_if_possible(
+                node.id,
+                salt=self.salt,
+                pepper=self.pepper,
+            ),
+            ctx=node.ctx,
         )
 
 
-def _prepare_python_source(code: str, mangle_salt: Optional[int] = None) -> str:
+def _prepare_python_source(
+    code: str, mangle_salt: Optional[int] = None, mangle_pepper: Optional[bytes] = None
+) -> str:
     code_ast = ast.parse(code)
-    if mangle_salt is not None:
-        code_ast = _NameMangler(mangle_salt).visit(code_ast)
+    if mangle_salt is not None and mangle_pepper is not None:
+        code_ast = _NameMangler(mangle_salt, mangle_pepper).visit(code_ast)
     return ast.unparse(code_ast)
 
 
@@ -165,6 +178,7 @@ def execute_attempt(
             success (bool): Whether or not the code was run successfully.
             output (str): Either the extracted program stdout or stderr, depending on success.
             tokens (Optional[set[str]]): Any exercise tokens collected from exercise_postrun code.
+            attempt_time_seconds: (Optional[float]): The number of seconds the entire program took.
     """
 
     # PyodideSandbox by itself cannot stream out newlines properly so we're hijacking stdout to
@@ -216,17 +230,21 @@ def execute_attempt(
     )
     # fmt: on
 
+    pepper = _generate_pepper()
+
     code = StringIO()
     for a in assembly:
         if a is None or len(a.text) == 0:
             continue
         try:
-            prepared = _prepare_python_source(a.text, mangle_salt=a.mangle_salt)
+            code.write(
+                _prepare_python_source(a.text, mangle_salt=a.mangle_salt, mangle_pepper=pepper)
+            )
+            code.write("\n\n")
         except SyntaxError as se:
             return ExecutionResult.fail(
                 (f"Syntax error at <{a.name}> on line {se.lineno}:\n{se.msg}")
             )
-        code.write(prepared + "\n\n")
 
     sandbox_result = asyncio.run(_sandbox_execute_with_timeout(code.getvalue()))
 
@@ -262,13 +280,9 @@ def execute_attempt(
             f"The sandbox failed to return a valid result ({type(ie).__name__})"
         )
     except json.JSONDecodeError as jsonde:
-        return ExecutionResult.fail(
-            f"The sandbox failed to return a valid result ({jsonde.msg})"
-        )
+        return ExecutionResult.fail(f"The sandbox failed to return a valid result ({jsonde.msg})")
     except ValidationError as ve:
-        return ExecutionResult.fail(
-            f"The sandbox failed to return a valid result ({ve.errors})"
-        )
+        return ExecutionResult.fail(f"The sandbox failed to return a valid result ({ve.errors})")
 
     return ExecutionResult(
         success=True,
