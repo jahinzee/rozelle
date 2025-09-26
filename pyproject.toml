@@ -1,6 +1,6 @@
 [project]
 name = "rozelle"
-version = "0.1.5"
+version = "0.1.6"
 description = "A TUI-based Python code exercise runner."
 readme = "README.md"
 license = { file = "LICENSE.txt" }
@@ -37,3 +37,6 @@ ignore = ["E402"]
 [[tool.mypy.overrides]]
 module = "pyfzf.*"
 follow_untyped_imports = true
+
+[tool.ruff]
+line-length = 100
