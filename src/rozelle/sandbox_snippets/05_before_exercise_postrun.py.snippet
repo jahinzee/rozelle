@@ -1,16 +1,16 @@
 # ruff: noqa
 
-__import__("sys").stdout = _RM__buffer_original
+_RM__import("sys").stdout = _RM__buffer_original
 _RM__attempt_lines = _RM__attempt_buffer.getvalue().splitlines()
 del _RM__attempt_buffer
 
-_RM__timer_end = __import__("time").perf_counter()
+_RM__timer_end = _RM__import("time").perf_counter()
 _RM__attempt_time_seconds = round(_RM__timer_end - _RM__timer_start, 2)
 
-rozelle = __import__("types").SimpleNamespace()
+rozelle = _RM__import("types").SimpleNamespace()
 rozelle.stdout = _RM__attempt_lines
 rozelle.attempt_time_seconds = _RM__attempt_time_seconds
 rozelle.tokens = set[str]()
 
-_RM__postrun_buffer = __import__("io").StringIO()
-__import__("sys").stdout = _RM__postrun_buffer
+_RM__postrun_buffer = _RM__import("io").StringIO()
+_RM__import("sys").stdout = _RM__postrun_buffer
