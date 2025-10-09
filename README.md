@@ -93,6 +93,8 @@ rozelle scaffold --select
 
 ## License and Additional Notes
 
+**Special thanks** to Everest ([hikalg](https://github.com/hikalg/)) for additional testing and feedback.
+
 Rozelle is [open source software](https://opensource.org/osd), and is licensed under the
 [Mozilla Public License, v. 2.0.](https://www.mozilla.org/en-US/MPL/2.0/). See
 [LICENSE.txt](LICENSE.txt).
