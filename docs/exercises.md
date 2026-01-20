@@ -19,7 +19,7 @@ expected_output = """
 Hello, Alice!
 Hello, Bob!
 Hello, Carol!
-Hello, Dave!
+Hello, David!
 """
 
 # …
@@ -29,7 +29,7 @@ Hello, Dave!
 <summary><strong>Sample Python code that passes the example exercise</strong></summary>
 
 ```py
-for name in ["Alice", "Bob", "Carol", "Dave"]:
+for name in ["Alice", "Bob", "Carol", "David"]:
     print(f"Hello, {name}!")
 ```
 
@@ -37,20 +37,32 @@ for name in ["Alice", "Bob", "Carol", "Dave"]:
 
 ## Writing constraints
 
-A constraint has:
+Constraints can specify limits or requirements with static analysis and runtime constraints.
 
-- a human-readable **description**,
-- a **regex** value to match for on the attempt code's
-  [abstract syntax tree (AST)](https://docs.python.org/3/library/ast.html),
-- a **maximum allowed** count for the regex to match (default: Infinity), and
-- a **minimum required** count for the regex to match (default: 0).
+### Syntax constraints
+
+Syntax constraints can be defined by individual matches of the attempt code's Python AST nodes, or
+on specific function calls.
 
 ```toml
 [[constraints]]
-description = "You can only use the `print` function once."
-ast_regex = '''func=Name\(id='print', ctx=Load\(\)\)'''
-max_allowed = 1
+description = "You must use at least one `for` loop."
+on = "node"
+match = "For"
+limits = { minimum = 1 }
 ```
+
+- `description`: a text description that's visible on the test window,
+- `on`: either `"call"`, `"node"`, `"pass-token"` or `"fail-token"`
+- `match`: the target to match on:
+  - for `call`: the name of the function to match calls on
+  - for `node`: the name of the Python AST node to match on -
+    see <https://docs.python.org/3/library/ast.html>
+  - for `pass-token | fail-token`, dynamically provided runtime tokens to scan and match on -
+    see [Tokens](#tokens).
+
+`call` and `node` constraints work by static analysis of attempt code before execution - any code
+that doesn't follow these constraints will not even be run.
 
 ## Writing prerun and postrun code
 
@@ -86,7 +98,7 @@ The Python sandbox where attempt code is tested has seven "stages":
 
 ```
 system₁ → prerun → system₃ → attempt → system₅ → postrun → system₇
-           ~~~~~~                                     ~~~~~~~
+          ~~~~~~                                 ~~~~~~~
 ```
 
 As an exercise writer, you only need to worry about what happens in the **prerun** and **postrun**
@@ -94,6 +106,19 @@ stages.
 
 Variables and functions are shared between prerun and postrun, and prerun variables are also exposed
 to attempt code (unless they are [mangled](#variable-mangling)).
+
+### Tokens
+
+The `rozelle` object available in prerun and postrun stages has a `tokens` attribute, which is a
+mutable set-like object where prerun and postrun code can insert token string into, which will be
+passed onto Rozelle for analysis.
+
+If any `pass-token` constraint(s) are defined, the attempt will fail unless *all* of those token
+values are detected. Likewise, if any `fail-token` constraint(s) is defined, the attempt will fail
+if *any* of those token values are detected.
+
+For a use case of token values, see the `even_sums.toml` example exercise, available in the standard
+scaffold.
 
 ### Variable mangling
 
@@ -129,6 +154,8 @@ print(_rozelle_mangled_1_deadbeef__magic_variable)  # …or something along thes
 
 > [!WARNING]
 > Function declarations are not mangled, even if the function name is prefixed with `_RM__`.
+>
+> To mangle a function name, you can assign a function definition to a mangled variable, and delete the original reference.
 
 Mangled names are useful, especially in exercise prerun code, to store private data that attempt
 code should not directly access.
