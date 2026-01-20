@@ -265,7 +265,7 @@ def execute_attempt(
         return ExecutionResult.fail("Standard output could not be accessed.")
 
     try:
-        result = _ExecutionStreamResults.parse_obj(
+        result = _ExecutionStreamResults.model_validate(
             json.loads(
                 _substring_between_two_substrings(
                     input=sandbox_result.stdout,
